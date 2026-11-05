@@ -6,8 +6,8 @@
 <title>黑貓巫師｜紫暮城堡</title>
 <style>
 *{box-sizing:border-box}
-body{margin:0;min-height:100vh;display:grid;place-items:center;padding:22px;background:#100c19;color:#f6edff;font-family:system-ui,-apple-system,"Noto Sans TC",sans-serif}
-main{width:min(100%,1100px)}
+body{margin:0;min-height:100vh;display:grid;place-items:center;padding:22px;background:#100c19;color:#f6edff;font-family:system-ui,-apple-system,"Noto Sans TC",sans-serif;overscroll-behavior:none}
+main{width:min(100%,1100px);min-width:0}
 h1{font-size:clamp(22px,4vw,32px);margin:0 0 5px}
 .sub{margin:0 0 16px;color:#cbb9d8;font-size:14px}
 .game-shell{padding:12px;background:#21182c;border:1px solid #59436b;border-radius:18px;box-shadow:0 20px 60px #0008}
@@ -16,7 +16,26 @@ canvas{display:block;width:100%;height:auto;border-radius:10px;background:#21182
 .controls{color:#d9c9e6;font-size:13px;line-height:1.8}
 kbd{display:inline-block;min-width:27px;text-align:center;padding:2px 7px;margin:0 2px;background:#42304f;border:1px solid #795d8c;border-radius:6px;color:#fff;font-weight:700}
 .status{font-size:12px;color:#bca7cc}
-@media(max-width:600px){body{padding:10px}.game-shell{padding:7px}.controls{font-size:11px}}
+.mobile-controls{display:none;gap:9px;justify-content:space-between;align-items:center;padding:12px 2px 3px;user-select:none;-webkit-user-select:none;touch-action:none}
+.control-cluster{display:flex;gap:8px;align-items:center}
+.touch-btn{min-width:58px;min-height:54px;padding:8px 12px;border:1px solid #9270a8;border-radius:14px;background:linear-gradient(180deg,#654879,#3a2948);color:#fff;font:700 15px system-ui,sans-serif;box-shadow:0 4px 0 #21182c;touch-action:none;-webkit-user-select:none;user-select:none}
+.touch-btn:active,.touch-btn.pressed{transform:translateY(2px);background:#8a5ca3;box-shadow:0 2px 0 #21182c}
+.touch-btn.action{background:linear-gradient(180deg,#8a5ca3,#56336e)}
+.mobile-hint{display:none;color:#cbb9d8;font-size:11px;text-align:center;padding-top:7px}
+@media(max-width:700px),(pointer:coarse){
+ body{padding:7px;display:block}
+ main{width:100%;max-width:1100px;margin:0 auto}
+ h1{font-size:21px}
+ .sub{font-size:12px;margin-bottom:9px}
+ .game-shell{padding:6px;border-radius:13px}
+ canvas{width:100%;height:auto}
+ .controls{font-size:10px;line-height:1.7}
+ .mobile-controls{display:flex}
+ .touch-btn{min-width:clamp(48px,13vw,66px);min-height:clamp(48px,13vw,62px);font-size:clamp(12px,3.2vw,15px);padding:6px}
+ .mobile-hint{display:block}
+}
+@media(max-width:380px){.control-cluster{gap:5px}.mobile-controls{gap:5px}.touch-btn{min-width:44px}}
+
 </style>
 </head>
 <body>
@@ -27,8 +46,19 @@ kbd{display:inline-block;min-width:27px;text-align:center;padding:2px 7px;margin
 <div class="controls">
 <kbd>W</kbd> 跳躍　<kbd>S</kbd> 蹲下　<kbd>A</kbd> 左移　<kbd>D</kbd> 右移　<kbd>SPACE</kbd> 發射魔法
 </div>
-
 </div>
+<div class="mobile-controls" id="mobileControls" aria-label="手機遊戲控制">
+  <div class="control-cluster">
+    <button class="touch-btn" type="button" data-hold="KeyA" aria-label="向左移動">◀</button>
+    <button class="touch-btn" type="button" data-hold="KeyD" aria-label="向右移動">▶</button>
+  </div>
+  <div class="control-cluster">
+    <button class="touch-btn" type="button" data-action="crouch" aria-label="蹲下">蹲下</button>
+    <button class="touch-btn action" type="button" data-action="jump" aria-label="跳躍">跳躍</button>
+    <button class="touch-btn action" type="button" data-action="fire" aria-label="施放魔法">魔法</button>
+  </div>
+</div>
+<div class="mobile-hint">手機可按住左右移動；點擊跳躍、蹲下或魔法。建議橫向遊玩，視野更寬。</div>
 </section>
 </main>
 <script>
@@ -119,6 +149,50 @@ window.addEventListener('keydown',e=>{
  }
 });
 window.addEventListener('keyup',e=>preventAndSet(e,false));
+
+// Touch controls: hold left/right; tap jump, crouch, or magic.
+const mobileControls=document.getElementById('mobileControls');
+function touchJump(){
+ if(gameState!=='playing'){
+   if(restartCountdown===null)restartCountdown=2;
+   return;
+ }
+ if(player.onGround){
+   player.vy=-760;player.onGround=false;player.crouching=false;
+ }
+}
+function touchFire(){
+ if(gameState!=='playing'){
+   if(restartCountdown===null)restartCountdown=2;
+   return;
+ }
+ if(player.attackCooldown<=0){
+   player.attackClock=.12;player.attackCooldown=.28;
+   projectiles.push({x:player.x+player.face*60,y:player.y-77,vx:player.face*560,life:1.8,delay:.12});
+ }
+}
+mobileControls.querySelectorAll('button').forEach(button=>{
+ const holdKey=button.dataset.hold;
+ const action=button.dataset.action;
+ const release=()=>{
+   if(holdKey)keys[holdKey]=false;
+   if(action==='crouch')keys.KeyS=false;
+   button.classList.remove('pressed');
+ };
+ button.addEventListener('pointerdown',event=>{
+   event.preventDefault();
+   button.classList.add('pressed');
+   if(holdKey){
+     keys[holdKey]=true;
+     try{button.setPointerCapture(event.pointerId)}catch(_){}
+   }else if(action==='jump')touchJump();
+   else if(action==='crouch')keys.KeyS=true;
+   else if(action==='fire')touchFire();
+ });
+ button.addEventListener('pointerup',event=>{event.preventDefault();release();});
+ button.addEventListener('pointercancel',release);
+ button.addEventListener('lostpointercapture',release);
+});
 window.addEventListener('blur',()=>{for(const k of Object.keys(keys))keys[k]=false;});
 
 function restartGame(){
